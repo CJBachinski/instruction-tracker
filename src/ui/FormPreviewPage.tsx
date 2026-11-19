@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { newId, type Request } from "../model";
 import { sortTerms } from "../logic/terms";
-import { NumberField, Select, Text, type PageProps } from "./common";
+import { Field, NumberField, PageHeader, Select, Text, type PageProps } from "./common";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 const blank = (): Request => ({
   id: "",
@@ -56,34 +58,33 @@ export default function FormPreviewPage(p: PageProps) {
 
   return (
     <>
-      <h1>Faculty request form (preview)</h1>
-      <p className="sub">
-        This is what faculty fill in. For the real thing, IT builds it as a Microsoft Form and a Power Automate flow adds each
-        response to the Requests table in the SharePoint workbook (see docs/SETUP.md). Faculty never open the app itself.
-      </p>
-      <div className="panel" style={{ maxWidth: 860 }}>
-        <h2>Request a library instruction session</h2>
-        <div className="fields">
-          <Select label="1. Which term and year?" required value={r.term} options={openTerms} onChange={(v) => set("term", v)} error={errors.term} />
-          <Text label="2. First-choice date" required type="date" value={r.date1} onChange={(v) => set("date1", v)} error={errors.date1} />
+      <PageHeader
+        title="Faculty request form"
+        description="A preview of what faculty fill in. The live version is a Microsoft Form on the Library Instruction guide; faculty never open this app."
+      />
+      <div className="max-w-[760px] rounded-2xl border bg-card p-6 lg:p-8">
+        <h2 className="text-[19px] font-semibold">Request a library instruction session</h2>
+        <p className="mt-1 text-muted-foreground">Start with the term, then your preferred dates.</p>
+        <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-4">
+          <Select label="Term and year" required value={r.term} options={openTerms} onChange={(v) => set("term", v)} error={errors.term} className="col-span-2" placeholder="Choose a term" />
+          <Text label="First-choice date" required type="date" value={r.date1} onChange={(v) => set("date1", v)} error={errors.date1} />
           <Text label="First-choice time" value={r.time1} placeholder="e.g. 1-2pm" onChange={(v) => set("time1", v)} />
           <Text label="Second-choice date" type="date" value={r.date2} onChange={(v) => set("date2", v)} />
           <Text label="Second-choice time" value={r.time2} onChange={(v) => set("time2", v)} />
           <Text label="Course #" required value={r.course} onChange={(v) => set("course", v)} error={errors.course} />
+          <NumberField label="How many students?" value={r.classSize} onChange={(v) => set("classSize", v)} />
           <Text label="Your name" required value={r.facultyName} onChange={(v) => set("facultyName", v)} error={errors.facultyName} />
           <Text label="Your email" required type="email" value={r.facultyEmail} onChange={(v) => set("facultyEmail", v)} error={errors.facultyEmail} />
           <Select label="College/School" value={r.college} options={data.lists.college} onChange={(v) => set("college", v)} />
           <Select label="Student type" value={r.studentType} options={data.lists.studentType} onChange={(v) => set("studentType", v)} />
-          <NumberField label="How many students?" value={r.classSize} onChange={(v) => set("classSize", v)} />
           <Select label="Format" value={r.sessionFormat} options={data.lists.sessionFormat} onChange={(v) => set("sessionFormat", v)} />
-          <Text label="Location / room" value={r.location} onChange={(v) => set("location", v)} />
-          <label className="field wide">
-            What would you like covered? (optional; the librarian can fill this in after talking with you)
-            <textarea value={r.notes} onChange={(e) => set("notes", e.target.value)} />
-          </label>
+          <Text label="Location or room" value={r.location} onChange={(v) => set("location", v)} />
+          <Field label="What would you like covered?" htmlFor="form-notes" hint="Optional. A librarian can fill this in after talking with you." className="col-span-2">
+            <Textarea id="form-notes" className="min-h-24" value={r.notes} onChange={(e) => set("notes", e.target.value)} />
+          </Field>
         </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button className="btn primary" onClick={submit}>Submit request</button>
+        <div className="mt-6">
+          <Button size="lg" onClick={submit}>Send request</Button>
         </div>
       </div>
     </>

@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { blankBooking, type Booking, type Request } from "../model";
 import BookingDialog from "./BookingDialog";
-import { fmtDate, type PageProps } from "./common";
+import { PageHeader, fmtDate, type PageProps } from "./common";
+import { useConfirm } from "./confirm";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function RequestsPage(p: PageProps) {
   const { data, store } = p;
   const [showHandled, setShowHandled] = useState(false);
   const [accepting, setAccepting] = useState<{ req: Request; booking: Booking } | null>(null);
+  const [ask, confirmDialog] = useConfirm();
+  const toggleId = useId();
 
   const list = data.requests
     .filter((r) => (showHandled ? true : r.status === "New"))
@@ -39,11 +44,17 @@ export default function RequestsPage(p: PageProps) {
   }
 
   async function reject(r: Request) {
-    const reason = prompt(`Reject the request for ${r.course} from ${r.facultyName}? Give a short reason:`);
-    if (reason === null) return;
+    const answer = await ask({
+      title: `Reject the request for ${r.course}?`,
+      description: `From ${r.facultyName}. Add a short reason so the team knows why.`,
+      inputLabel: "Reason",
+      confirmLabel: "Reject request",
+      destructive: true,
+    });
+    if (!answer.ok) return;
     try {
       await store.updateRequest({
-        ...r, status: "Rejected", rejectReason: reason, handledBy: store.user, handledAt: new Date().toISOString(),
+        ...r, status: "Rejected", rejectReason: answer.text, handledBy: store.user, handledAt: new Date().toISOString(),
       });
       p.notify("Request rejected.");
       await p.refresh();
@@ -54,46 +65,79 @@ export default function RequestsPage(p: PageProps) {
 
   return (
     <>
-      <h1>Requests</h1>
-      <p className="sub">
-        Faculty requests from the sign-up form. Accept one to turn it into a booking; it then shows up for all three librarians.
-      </p>
-      <label className="row" style={{ gap: 6, marginBottom: 12 }}>
-        <input type="checkbox" checked={showHandled} onChange={(e) => setShowHandled(e.target.checked)} /> Show accepted and rejected requests too
-      </label>
-      {list.length === 0 && <div className="panel empty">No new requests.</div>}
-      <div className="stack">
+      <PageHeader
+        title="Requests"
+        description="What faculty sent through the sign-up form. Accept a request to turn it into a booking for the whole team."
+      >
+        <div className="flex items-center gap-2">
+          <Checkbox id={toggleId} checked={showHandled} onCheckedChange={(v) => setShowHandled(v === true)} />
+          <label htmlFor={toggleId} className="text-[14px]">
+            Show accepted and rejected
+          </label>
+        </div>
+      </PageHeader>
+
+      {list.length === 0 && (
+        <div className="rounded-2xl border bg-card px-6 py-16 text-center">
+          <p className="text-[17px] font-semibold">No new requests</p>
+          <p className="mt-1 text-muted-foreground">New form submissions show up here within about 20 seconds.</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4">
         {list.map((r) => {
           const dup = r.date1 ? possibleDuplicate(r, r.date1) : undefined;
           return (
-            <div key={r.id} className="panel">
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div>
-                  <h2 style={{ margin: 0 }}>{r.course} · {r.facultyName}</h2>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {r.term} · submitted {r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "?"}
-                    {r.facultyEmail && <> · <a href={`mailto:${r.facultyEmail}`}>{r.facultyEmail}</a></>}
-                  </div>
-                </div>
-                <span className={`status ${r.status === "New" ? "New" : r.status === "Accepted" ? "Completed" : "Wrap-up"}`}>{r.status}</span>
+            <article key={r.id} className="rounded-2xl border bg-card p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                <h2 className="text-[19px] font-semibold">
+                  {r.course} <span className="font-normal text-muted-foreground">with {r.facultyName}</span>
+                </h2>
+                <p className="text-[13px] text-muted-foreground">
+                  {r.status !== "New" && <span className="font-semibold text-foreground">{r.status}. </span>}
+                  Sent {r.submittedAt ? new Date(r.submittedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "at an unknown time"}
+                </p>
               </div>
-              <div className="fields" style={{ marginTop: 12 }}>
-                <div><div className="muted">First choice</div>{fmtDate(r.date1) || "—"} {r.time1}</div>
-                <div><div className="muted">Second choice</div>{fmtDate(r.date2) || "—"} {r.time2}</div>
-                <div><div className="muted">Format / location</div>{r.sessionFormat || "—"} · {r.location || "—"}</div>
-                <div><div className="muted">College · students</div>{r.college || "—"} · {r.studentType || "—"} · {r.classSize ?? "?"} students</div>
-                <div className="wide"><div className="muted">What they want covered</div>{r.notes || "—"}</div>
-              </div>
-              {dup && <div className="banner warn">A booking for {r.course} with {r.facultyName} already exists on {fmtDate(r.date1)}. Check before accepting.</div>}
-              {r.status === "Rejected" && r.rejectReason && <div className="banner info">Rejected: {r.rejectReason}</div>}
+
+              <dl className="mt-5 grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-4">
+                <Fact label="First choice">{fmtDate(r.date1) || "No date"}{r.time1 && <Sub>{r.time1}</Sub>}</Fact>
+                <Fact label="Second choice">{fmtDate(r.date2) || "None given"}{r.time2 && <Sub>{r.time2}</Sub>}</Fact>
+                <Fact label="Where">{r.location || "Not given"}<Sub>{r.sessionFormat || "Format not given"}</Sub></Fact>
+                <Fact label="Who">
+                  {r.classSize !== null ? `${r.classSize} students` : "Class size not given"}
+                  <Sub>{[r.studentType, r.college].filter(Boolean).join(", ") || "No program details"}</Sub>
+                </Fact>
+                <Fact label="Term">{r.term || "Not given"}</Fact>
+                <Fact label="Contact">
+                  {r.facultyEmail ? (
+                    <a className="underline underline-offset-4" href={`mailto:${r.facultyEmail}`}>{r.facultyEmail}</a>
+                  ) : (
+                    "No email"
+                  )}
+                </Fact>
+                <Fact label="What they want covered" className="col-span-2">{r.notes || "Nothing yet. Fill it in after talking with them."}</Fact>
+              </dl>
+
+              {dup && (
+                <p className="mt-5 rounded-xl border bg-muted/60 px-4 py-3 text-[14px]">
+                  <span className="font-semibold">Possible duplicate.</span> A booking for {r.course} with {r.facultyName} already
+                  exists on {fmtDate(r.date1)}.
+                </p>
+              )}
+              {r.status === "Rejected" && r.rejectReason && (
+                <p className="mt-5 text-[14px] text-muted-foreground">Reason: {r.rejectReason}</p>
+              )}
+
               {r.status === "New" && (
-                <div className="row" style={{ marginTop: 12 }}>
-                  {r.date1 && <button className="btn primary" onClick={() => accept(r, 1)}>Accept first choice</button>}
-                  {r.date2 && <button className="btn" onClick={() => accept(r, 2)}>Accept second choice</button>}
-                  <button className="btn danger" onClick={() => reject(r)}>Reject</button>
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  {r.date1 && <Button onClick={() => accept(r, 1)}>Accept first choice</Button>}
+                  {r.date2 && <Button variant="outline" onClick={() => accept(r, 2)}>Accept second choice</Button>}
+                  <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => reject(r)}>
+                    Reject
+                  </Button>
                 </div>
               )}
-            </div>
+            </article>
           );
         })}
       </div>
@@ -101,6 +145,7 @@ export default function RequestsPage(p: PageProps) {
       {accepting && (
         <BookingDialog
           {...p}
+          key={accepting.booking.id}
           base={accepting.booking}
           isNew
           onClose={() => setAccepting(null)}
@@ -119,6 +164,20 @@ export default function RequestsPage(p: PageProps) {
           }}
         />
       )}
+      {confirmDialog}
     </>
   );
+}
+
+function Fact(props: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={props.className}>
+      <dt className="text-[13px] text-muted-foreground">{props.label}</dt>
+      <dd className="mt-0.5 leading-snug">{props.children}</dd>
+    </div>
+  );
+}
+
+function Sub(props: { children: ReactNode }) {
+  return <span className="block text-[13px] text-muted-foreground">{props.children}</span>;
 }

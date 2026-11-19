@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import type { Booking } from "../model";
 import { todayIso } from "../model";
 import { academicYears, sortTerms, termFor } from "../logic/terms";
@@ -16,10 +17,21 @@ import {
 import { buildDashboardExport } from "../io/exportWorkbook";
 import { downloadBlob } from "../io/download";
 import BookingDialog from "./BookingDialog";
-import { NOT_SET_COLOR, colorFor, fmtDate, type PageProps } from "./common";
+import { PageHeader, fmtDate, type PageProps } from "./common";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type FilterKey = Exclude<keyof DashFilters, "period">;
 const FILTER_KEY = "instruction-tracker-dash-filters";
+const FILTER_KEYS: FilterKey[] = ["studentType", "librarian", "college", "sessionFormat", "sessionType"];
 
 function loadSaved(fallback: DashFilters): DashFilters {
   try {
@@ -29,6 +41,17 @@ function loadSaved(fallback: DashFilters): DashFilters {
     /* ignore */
   }
   return fallback;
+}
+
+// One color per librarian, in list order, used by the calendar and the librarian chart.
+const LIBRARIAN_COLORS = ["#2563eb", "#ea7317", "#16a34a", "#9333ea", "#db2777", "#0d9488"];
+const UNASSIGNED_COLOR = "#8e8e93";
+const NEUTRAL_BAR = "#48484a";
+
+function librarianColor(name: string, librarians: string[]): string {
+  if (!name || name === NOT_SET) return UNASSIGNED_COLOR;
+  const i = librarians.indexOf(name);
+  return LIBRARIAN_COLORS[(i < 0 ? librarians.length : i) % LIBRARIAN_COLORS.length];
 }
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -85,47 +108,79 @@ export default function DashboardPage(p: PageProps) {
     update({ ...f, [key]: cur.length === 1 && cur[0] === value ? [] : [value] });
   };
 
-  const setPeriodKind = (kind: Period["kind"]) => {
-    if (kind === "term") update({ ...f, period: { kind, term: currentTerm ?? terms[0]?.name ?? "" } });
-    else if (kind === "year") update({ ...f, period: { kind, year: years[years.length - 1] ?? "" } });
-    else if (kind === "range") update({ ...f, period: { kind, from: "", to: "" } });
+  const periodValue =
+    f.period.kind === "term" ? `term:${f.period.term}` : f.period.kind === "year" ? `year:${f.period.year}` : f.period.kind;
+  const setPeriodValue = (v: string) => {
+    if (v.startsWith("term:")) update({ ...f, period: { kind: "term", term: v.slice(5) } });
+    else if (v.startsWith("year:")) update({ ...f, period: { kind: "year", year: v.slice(5) } });
+    else if (v === "range") update({ ...f, period: { kind: "range", from: "", to: "" } });
     else update({ ...f, period: { kind: "all" } });
+    setMonth(null);
   };
+  const range = f.period.kind === "range" ? f.period : null;
+  const activeCount = FILTER_KEYS.reduce((n, key) => n + f[key].length, 0);
 
-  const chipGroup = (label: string, key: FilterKey, values: string[], withNotSet = false) => (
-    <div className="chipgroup">
-      <b>{label}</b>
-      {[...values, ...(withNotSet ? [NOT_SET] : [])].map((v) => (
-        <button key={v} className={`chip ${f[key].includes(v) ? "on" : ""}`} aria-pressed={f[key].includes(v)} onClick={() => toggle(key, v)}>
-          {v}
-        </button>
-      ))}
-    </div>
-  );
+  const filterMenu = (label: string, key: FilterKey, values: string[], withNotSet = false) => {
+    const picked = f[key];
+    const options = [...values, ...(withNotSet ? [NOT_SET] : [])];
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className={cn("font-normal", picked.length > 0 && "border-foreground/40 font-medium")}>
+            {picked.length === 0 ? label : picked.length === 1 ? picked[0] : `${label}, ${picked.length}`}
+            <ChevronDown className="text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-48">
+          {options.length === 0 && <p className="px-2 py-1.5 text-[13px] text-muted-foreground">Nothing to choose yet. Add values in Settings.</p>}
+          {options.map((v) => (
+            <DropdownMenuCheckboxItem
+              key={v}
+              checked={picked.includes(v)}
+              onCheckedChange={() => toggle(key, v)}
+              onSelect={(e) => e.preventDefault()}
+            >
+              {v}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   const barChart = (title: string, key: FilterKey, bars: Bar[], colorOf: (label: string) => string) => {
     const max = Math.max(1, ...bars.map((b) => b.count));
     return (
-      <div className="panel">
-        <h3>{title}</h3>
-        {bars.length === 0 && <div className="muted">No bookings match these filters.</div>}
-        <div className="bars">
-          {bars.map((b) => (
-            <button
-              key={b.label}
-              className={`bar ${f[key].length === 1 && f[key][0] === b.label ? "on" : ""}`}
-              title={`${b.count} sessions · ${b.attendance} attended · ${b.prepHours} prep hours. Click to filter.`}
-              onClick={() => only(key, b.label)}
-            >
-              <span className="label">{b.label}</span>
-              <span className="track">
-                <span className="fill" style={{ display: "block", width: `${(b.count / max) * 100}%`, background: colorOf(b.label) }} />
-              </span>
-              <span className="num">{b.count}</span>
-            </button>
-          ))}
+      <section className="rounded-2xl border bg-card p-5">
+        <h2 className="pb-3 text-[15px] font-semibold">{title}</h2>
+        {bars.length === 0 && <p className="text-muted-foreground">No bookings match these filters.</p>}
+        <div className="flex flex-col">
+          {bars.map((b) => {
+            const selected = f[key].length === 1 && f[key][0] === b.label;
+            return (
+              <button
+                key={b.label}
+                type="button"
+                aria-pressed={selected}
+                title={`${b.count} sessions, ${b.attendance} attended, ${b.prepHours} prep hours. Click to filter.`}
+                onClick={() => only(key, b.label)}
+                className="grid grid-cols-[minmax(0,9rem)_1fr_2.5rem] items-center gap-3 rounded-md px-1.5 py-1.5 text-left hover:bg-muted"
+              >
+                <span className={cn("truncate text-[14px]", selected && "font-semibold", b.label === NOT_SET && "text-muted-foreground")}>
+                  {b.label}
+                </span>
+                <span className="h-3 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full"
+                    style={{ width: `${(b.count / max) * 100}%`, background: b.label === NOT_SET ? UNASSIGNED_COLOR : colorOf(b.label) }}
+                  />
+                </span>
+                <span className="text-right text-[14px] font-medium tabular-nums">{b.count}</span>
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </section>
     );
   };
 
@@ -151,12 +206,7 @@ export default function DashboardPage(p: PageProps) {
   }
 
   async function exportDash() {
-    const filtersText = [
-      periodText(),
-      ...(["studentType", "librarian", "college", "sessionFormat", "sessionType"] as FilterKey[]).map(
-        (key) => `${key}: ${f[key].length ? f[key].join(", ") : "All"}`,
-      ),
-    ];
+    const filtersText = [periodText(), ...FILTER_KEYS.map((key) => `${key}: ${f[key].length ? f[key].join(", ") : "All"}`)];
     const kpiRows: [string, string | number][] = [
       ["Sessions", k.sessions],
       ["Total attendance", k.attendance],
@@ -183,119 +233,183 @@ export default function DashboardPage(p: PageProps) {
     }
   }
 
-  const libColor = (l: string) => (l === NOT_SET ? NOT_SET_COLOR : colorFor(l, L.librarian));
-  const plain = (l: string) => (l === NOT_SET ? NOT_SET_COLOR : "#2f65b5");
+  const stats: [string, string][] = [
+    [String(k.sessions), "Sessions"],
+    [k.attendance.toLocaleString(), "Students attended"],
+    [k.avgAttendance !== null ? String(k.avgAttendance) : "None yet", "Average per session"],
+    [String(k.prepHours), "Prep hours"],
+    [k.attendanceVsClassSize !== null ? `${k.attendanceVsClassSize}%` : "None yet", "Attendance vs class size"],
+  ];
 
   return (
     <>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div>
-          <h1>Dashboard</h1>
-          <p className="sub">One set of filters drives everything below. Click a bar to filter to it; click it again to clear.</p>
-        </div>
-        <div className="row">
-          <button className="btn" onClick={() => update(emptyFilters(f.period))}>Reset filters</button>
-          <button className="btn primary" onClick={exportDash}>Export dashboard</button>
-        </div>
+      <PageHeader title="Dashboard">
+        <Button variant="outline" onClick={exportDash}>
+          <Download /> Export to Excel
+        </Button>
+      </PageHeader>
+
+      <div className="flex flex-wrap items-center gap-2 pb-5">
+        <Select value={periodValue} onValueChange={setPeriodValue}>
+          <SelectTrigger aria-label="Period" className="min-w-40 font-medium">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>Term</SelectLabel>
+              {terms.map((t) => (
+                <SelectItem key={t.name} value={`term:${t.name}`}>{t.name}</SelectItem>
+              ))}
+            </SelectGroup>
+            {years.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Academic year</SelectLabel>
+                {years.map((y) => (
+                  <SelectItem key={y} value={`year:${y}`}>{y}</SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            <SelectGroup>
+              <SelectLabel>Other</SelectLabel>
+              <SelectItem value="range">Date range</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {range && (
+          <>
+            <Input type="date" aria-label="From" className="w-40" value={range.from} onChange={(e) => update({ ...f, period: { ...range, from: e.target.value } })} />
+            <span className="text-muted-foreground">to</span>
+            <Input type="date" aria-label="To" className="w-40" value={range.to} onChange={(e) => update({ ...f, period: { ...range, to: e.target.value } })} />
+          </>
+        )}
+        <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        {filterMenu("Student type", "studentType", L.studentType, true)}
+        {filterMenu("Librarian", "librarian", L.librarian, true)}
+        {filterMenu("College/School", "college", L.college, true)}
+        {filterMenu("Format", "sessionFormat", L.sessionFormat)}
+        {filterMenu("Session type", "sessionType", L.sessionType)}
+        {activeCount > 0 && (
+          <Button variant="ghost" onClick={() => update(emptyFilters(f.period))}>
+            Reset filters
+          </Button>
+        )}
       </div>
 
-      <div className="panel filters">
-        <div className="chipgroup">
-          <b>Period</b>
-          {(["term", "year", "range", "all"] as const).map((kind) => (
-            <button key={kind} className={`chip ${f.period.kind === kind ? "on" : ""}`} onClick={() => setPeriodKind(kind)}>
-              {kind === "term" ? "Term" : kind === "year" ? "Academic year" : kind === "range" ? "Date range" : "All time"}
-            </button>
-          ))}
-          {f.period.kind === "term" && (
-            <select value={f.period.term} onChange={(e) => update({ ...f, period: { kind: "term", term: e.target.value } })}>
-              {terms.map((t) => <option key={t.name}>{t.name}</option>)}
-            </select>
-          )}
-          {f.period.kind === "year" && (
-            <select value={f.period.year} onChange={(e) => update({ ...f, period: { kind: "year", year: e.target.value } })}>
-              {years.map((y) => <option key={y}>{y}</option>)}
-            </select>
-          )}
-          {f.period.kind === "range" && (
-            <>
-              <input type="date" value={f.period.from} aria-label="From" onChange={(e) => update({ ...f, period: { ...(f.period as { kind: "range"; from: string; to: string }), from: e.target.value } })} />
-              <input type="date" value={f.period.to} aria-label="To" onChange={(e) => update({ ...f, period: { ...(f.period as { kind: "range"; from: string; to: string }), to: e.target.value } })} />
-            </>
-          )}
-        </div>
-        {chipGroup("Student type", "studentType", L.studentType, true)}
-        {chipGroup("Librarian", "librarian", L.librarian, true)}
-        {chipGroup("College/School", "college", L.college, true)}
-        {chipGroup("Session format", "sessionFormat", L.sessionFormat)}
-        {chipGroup("Session type", "sessionType", L.sessionType)}
-      </div>
-
-      <div className="kpis" style={{ margin: "16px 0" }}>
-        <div className="kpi"><div className="v">{k.sessions}</div><div className="l">Sessions</div></div>
-        <div className="kpi"><div className="v">{k.attendance.toLocaleString()}</div><div className="l">Students attended</div></div>
-        <div className="kpi"><div className="v">{k.avgAttendance ?? "—"}</div><div className="l">Average per session</div></div>
-        <div className="kpi"><div className="v">{k.prepHours}</div><div className="l">Prep hours</div></div>
-        <div className="kpi"><div className="v">{k.attendanceVsClassSize !== null ? `${k.attendanceVsClassSize}%` : "—"}</div><div className="l">Attendance vs class size</div></div>
-      </div>
-
-      <div className="grid2">
-        <div className="panel">
-          <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-            <h3 style={{ margin: 0 }}>Calendar</h3>
-            <div className="row">
-              <button className="btn small" aria-label="Previous month" onClick={() => setMonth(addMonths(shownMonth, -1))}>◀</button>
-              <b>{first.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</b>
-              <button className="btn small" aria-label="Next month" onClick={() => setMonth(addMonths(shownMonth, 1))}>▶</button>
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <section className="rounded-2xl border bg-card p-5">
+          <div className="flex items-center justify-between pb-3">
+            <h2 className="text-[15px] font-semibold">{first.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" aria-label="Previous month" onClick={() => setMonth(addMonths(shownMonth, -1))}>
+                <ChevronLeft />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setMonth(monthStart(today))}>
+                Today
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Next month" onClick={() => setMonth(addMonths(shownMonth, 1))}>
+                <ChevronRight />
+              </Button>
             </div>
           </div>
-          <div className="cal">
-            {DOW.map((d) => <div key={d} className="dow">{d}</div>)}
+          <div className="grid grid-cols-7 border-t border-l">
+            {DOW.map((d) => (
+              <div key={d} className="border-r border-b px-2 py-1.5 text-[12px] text-muted-foreground">{d}</div>
+            ))}
             {visibleCells.map((c) => {
               const list = dates.get(c) ?? [];
               const out = c.slice(0, 7) !== shownMonth.slice(0, 7);
+              // Days from the month before or after stay blank, so only this month's bookings show.
+              if (out) return <div key={c} aria-hidden="true" className="min-h-[5.5rem] border-r border-b bg-muted/40" />;
               return (
-                <button key={c} className={`day ${out ? "out" : ""} ${day === c ? "sel" : ""}`} onClick={() => setDay(day === c ? null : c)} aria-label={`${fmtDate(c)}: ${list.length} bookings`}>
-                  <span className="d">{Number(c.slice(8))}</span>
-                  {list.slice(0, 3).map((b) => (
-                    <span key={b.id} className="chipb" style={{ background: colorFor(b.librarian, L.librarian) }}>
-                      {b.course} {b.time}
-                    </span>
-                  ))}
-                  {list.length > 3 && <span className="more">+{list.length - 3} more</span>}
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setDay(day === c ? null : c)}
+                  aria-pressed={day === c}
+                  aria-label={`${fmtDate(c)}: ${list.length} ${list.length === 1 ? "booking" : "bookings"}`}
+                  className={cn(
+                    "flex min-h-[5.5rem] min-w-0 flex-col gap-0.5 border-r border-b p-1.5 text-left -outline-offset-2 hover:bg-muted/60",
+                    day === c && "bg-muted",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-full text-[12px] tabular-nums",
+                      c === today && "bg-foreground font-semibold text-background",
+                    )}
+                  >
+                    {Number(c.slice(8))}
+                  </span>
+                  {list.slice(0, 2).map((b) => {
+                    const c = librarianColor(b.librarian, L.librarian);
+                    return (
+                      <span
+                        key={b.id}
+                        title={`${b.course} ${b.time}, ${b.librarian || "no librarian"}`}
+                        className="block w-full truncate rounded-[5px] border-l-[3px] px-1 py-px text-[12px] leading-tight text-foreground"
+                        style={{ borderColor: c, background: `color-mix(in srgb, ${c} 16%, white)` }}
+                      >
+                        <span className="font-medium">{b.course}</span> {b.time}
+                      </span>
+                    );
+                  })}
+                  {list.length > 2 && <span className="text-[12px] text-muted-foreground">{list.length - 2} more</span>}
                 </button>
               );
             })}
           </div>
-          <div className="legend" style={{ marginTop: 8 }}>
-            {L.librarian.map((l) => <span key={l} style={{ ["--c" as string]: colorFor(l, L.librarian) }}>{l}</span>)}
-            <span style={{ ["--c" as string]: NOT_SET_COLOR }}>Not assigned</span>
-          </div>
+          <ul className="flex flex-wrap gap-x-5 gap-y-1 pt-3 text-[13px]" aria-label="Calendar colors">
+            {[...L.librarian, ""].map((l) => (
+              <li key={l || "none"} className="flex items-center gap-1.5">
+                <span className="size-2.5 rounded-full" style={{ background: librarianColor(l, L.librarian) }} />
+                {l || "No librarian"}
+              </li>
+            ))}
+          </ul>
           {day && (
-            <div style={{ marginTop: 12 }}>
-              <h3>{fmtDate(day)}</h3>
-              {(dates.get(day) ?? []).length === 0 && <div className="muted">No bookings that day.</div>}
-              {(dates.get(day) ?? []).map((b) => (
-                <div key={b.id} className="row" style={{ padding: "4px 0", borderBottom: "1px solid var(--soft)" }}>
-                  <b>{b.course}</b> <span>{b.time}</span> <span className="muted">{b.faculty} · {b.librarian || "unassigned"} · {b.location}</span>
-                  <span className="spacer" />
-                  <button className="btn small" onClick={() => setOpen(b)}>Open</button>
-                </div>
-              ))}
+            <div className="pt-4">
+              <h3 className="pb-1 text-[14px] font-semibold">{fmtDate(day)}</h3>
+              {(dates.get(day) ?? []).length === 0 && <p className="text-muted-foreground">No bookings that day.</p>}
+              <ul className="divide-y">
+                {(dates.get(day) ?? []).map((b) => (
+                  <li key={b.id} className="flex items-center gap-3 py-2">
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: librarianColor(b.librarian, L.librarian) }} />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-semibold">{b.course}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {[b.time, b.faculty && `with ${b.faculty}`, b.librarian || "no librarian", b.location].filter(Boolean).join(", ")}
+                      </span>
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => setOpen(b)}>Open</Button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
+        </section>
+
+        <div className="flex flex-col gap-5">
+          {barChart("Sessions by librarian", "librarian", byLibrarian, (l) => librarianColor(l, L.librarian))}
+          {barChart("Bookings by college/school", "college", byCollege, () => NEUTRAL_BAR)}
+          {barChart("Bookings by student type", "studentType", byStudent, () => NEUTRAL_BAR)}
         </div>
-        {barChart("Sessions by librarian", "librarian", byLibrarian, libColor)}
-        {barChart("Bookings by college/school", "college", byCollege, plain)}
-        {barChart("Bookings by student type (program)", "studentType", byStudent, plain)}
       </div>
-      <p className="muted" style={{ fontSize: 13 }}>
-        Grey “Not set” bars count bookings missing a librarian, college/school or student type. Fill those in from the Missing details tab on Bookings.
-      </p>
+
+      <h2 className="px-1 pt-8 pb-2 text-[15px] font-semibold">Totals for this period</h2>
+      <dl className="grid grid-cols-2 overflow-hidden rounded-2xl border bg-card sm:grid-cols-3 lg:grid-cols-5">
+        {stats.map(([value, label]) => (
+          <div key={label} className="-mr-px -mb-px border-r border-b px-5 py-4">
+            <dd className="text-[28px] leading-tight font-semibold tabular-nums">{value}</dd>
+            <dt className="text-[13px] text-muted-foreground">{label}</dt>
+          </div>
+        ))}
+      </dl>
 
       {open && (
         <BookingDialog
           {...p}
+          key={open.id}
           base={open}
           isNew={false}
           onClose={() => setOpen(null)}

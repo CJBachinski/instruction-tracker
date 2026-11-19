@@ -18,7 +18,7 @@ npm run dev
 
 Open http://localhost:5173.
 
-- Pick who you are from **I am** at the top.
+- Pick who you are from the user menu at the bottom of the sidebar.
 - Open the app in a second tab to see two people editing at once: if both change the same field, the second save asks which value to keep.
 - **Settings → Import** reads the real `2026-2027 Instruction Classes.xlsx`. In demo mode the data still stays in your browser.
 
@@ -26,12 +26,15 @@ Open http://localhost:5173.
 
 | Screen | What it does |
 |--------|--------------|
-| Bookings | Every session, with tabs that follow the workflow: **New** (no librarian) → **Planning** → **Wrap-up** (date passed, attendance missing) → **Completed**, plus **Missing details**. Search, term/year picker, Excel export |
-| Booking form | Term and year first, then date and the rest, grouped by stage. Notes stay editable throughout. Add to my calendar (.ics), Duplicate, Delete (restorable) |
-| Requests | Faculty requests from the form. Accept the first or second choice of date to make a booking, or reject with a reason |
-| Dashboard | Calendar, sessions by librarian, bookings by college/school and by student type, and totals. Filter by student type, librarian, college/school, format and session type, for a term, an academic year or a date range. Click a bar to filter. Export to Excel |
-| Settings | Terms (add, close with an archive copy, reopen), dropdown lists, import of the old spreadsheet, restore deleted bookings |
-| Faculty form (preview) | What faculty fill in (the real one is a Microsoft Form) |
+| Sidebar | Navigation with a count of bookings that need attention and of new requests. The user menu at the bottom shows who you are and, in demo mode, lets you switch librarian |
+| Bookings | Opens on **To do**: bookings that need a librarian (assign in two clicks), sessions that need attendance entered (from the row), and sessions coming up in the next 14 days. Other tabs follow the workflow: **New** → **Planning** → **Wrap-up** → **Completed**, plus **Missing details** and **All**, with a term/year picker, sort, search and Excel export |
+| Booking sheet | Opens from the side. The header names the stage and the next step. Four sections (Faculty request, Librarian, Planning, After the session) collapse to a one-line summary, and the one for the current stage starts open. Term and year come first. Notes stay visible and editable throughout. The More menu has Add to my calendar (.ics), Duplicate and Delete (restorable) |
+| Requests | Faculty requests from the form, one card each. Accept the first or second choice of date to make a booking, or reject with a reason |
+| Dashboard | A compact filter bar (period, student type, librarian, college/school, format, session type, Reset), then a month calendar with each booking in its librarian's color, and sessions by librarian, college/school and student type. Click a bar to filter. Totals for the period sit at the bottom. Export to Excel |
+| Settings | One tab per job: **Terms** (add, edit dates, close with an archive copy, reopen), **Dropdown choices** (add or remove options; saves right away), **Import spreadsheet**, **Deleted bookings** (restore) and **Demo** |
+| Faculty form preview | What faculty fill in (the real one is a Microsoft Form) |
+
+The interface uses [shadcn/ui](https://ui.shadcn.com) components on Tailwind CSS v4, with the system font and a neutral palette: one blue accent marks the main action on each screen. The dashboard is the one exception: each librarian has their own color in the calendar and the librarian chart.
 
 ## Going live
 
@@ -53,6 +56,8 @@ src/
   logic/              terms, prep-time parser, time parser, merge, dashboard metrics, .ics
   io/                 import of the old workbook, Excel exports
   ui/                 screens
+  components/ui/      shadcn/ui components (added with `npx shadcn add`)
+  index.css           Tailwind import and the theme colors
 tests/                vitest
 scripts/              workbook template generator
 ```

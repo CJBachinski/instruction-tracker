@@ -4,7 +4,15 @@ import { overlappingTerm, sortTerms } from "../logic/terms";
 import { readLegacyWorkbook, type ImportReport } from "../io/importWorkbook";
 import { buildExport } from "../io/exportWorkbook";
 import { resetDemo } from "../data/demoStore";
-import { fmtDate, type PageProps } from "./common";
+import { Field, PageHeader, fmtDate, type PageProps } from "./common";
+import { useConfirm } from "./confirm";
+import { useId, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props extends PageProps {
   demoUser?: { value: string; set: (v: string) => void };
@@ -13,11 +21,14 @@ interface Props extends PageProps {
 export default function SettingsPage(p: Props) {
   const { data, store, notify } = p;
   const [terms, setTerms] = useState<Term[]>(() => sortTerms(data.terms).map((t) => ({ ...t })));
-  const [listText, setListText] = useState<Record<ListName, string>>(
-    () => Object.fromEntries(Object.entries(data.lists).map(([k, v]) => [k, v.join("\n")])) as Record<ListName, string>,
-  );
+  const [lists, setLists] = useState<Lists>(data.lists);
+  const [listName, setListName] = useState<ListName>("librarian");
+  const [newValue, setNewValue] = useState("");
+  const [tab, setTab] = useState("terms");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ bookings: Booking[]; report: ImportReport } | null>(null);
+  const [ask, confirmDialog] = useConfirm();
+  const fileId = useId();
 
   const deleted = data.bookings.filter((b) => b.deletedAt);
 
@@ -47,7 +58,12 @@ export default function SettingsPage(p: Props) {
   async function closeTerm(i: number) {
     const t = terms[i];
     const count = data.bookings.filter((b) => b.term === t.name && !b.deletedAt).length;
-    if (!confirm(`Close ${t.name}? Its ${count} bookings become read-only, and an archive copy is saved.`)) return;
+    const answer = await ask({
+      title: `Close ${t.name}?`,
+      description: `Its ${count} bookings become read-only, and an archive copy is saved. You can reopen the term later.`,
+      confirmLabel: "Close term",
+    });
+    if (!answer.ok) return;
     setBusy(true);
     try {
       const rows = data.bookings.filter((b) => b.term === t.name);
@@ -66,27 +82,52 @@ export default function SettingsPage(p: Props) {
   }
 
   async function reopenTerm(i: number) {
-    if (!confirm(`Reopen ${terms[i].name}? Its bookings become editable again.`)) return;
+    const answer = await ask({
+      title: `Reopen ${terms[i].name}?`,
+      description: "Its bookings become editable again. The archive copy stays as it is.",
+      confirmLabel: "Reopen term",
+    });
+    if (!answer.ok) return;
     const next = terms.map((x, j) => (j === i ? { ...x, status: "Open" as const } : x));
     setTerms(next);
     await saveTerms(next);
   }
 
-  async function saveLists() {
-    const lists = Object.fromEntries(
-      Object.entries(listText).map(([k, v]) => [k, v.split("\n").map((s) => s.trim()).filter(Boolean)]),
-    ) as Lists;
+  // Dropdown lists save as soon as a value is added or removed, so there is no separate Save step.
+  async function saveLists(next: Lists, done: string) {
+    const before = lists;
+    setLists(next);
     setBusy(true);
     try {
-      await store.saveLists(lists);
-      notify("Dropdown lists saved.");
+      await store.saveLists(next);
+      notify(done);
       await p.refresh();
     } catch (e) {
+      setLists(before);
       notify((e as Error).message, true);
     } finally {
       setBusy(false);
     }
   }
+
+  function addValue() {
+    const v = newValue.trim();
+    if (!v) return;
+    if (lists[listName].some((x) => x.toLowerCase() === v.toLowerCase())) {
+      notify(`"${v}" is already in this list.`, true);
+      return;
+    }
+    setNewValue("");
+    void saveLists({ ...lists, [listName]: [...lists[listName], v] }, `Added "${v}".`);
+  }
+
+  function removeValue(v: string) {
+    void saveLists({ ...lists, [listName]: lists[listName].filter((x) => x !== v) }, `Removed "${v}".`);
+  }
+
+  const plain = (ts: Term[]) => JSON.stringify(ts.map((t) => [t.name, t.academicYear, t.start, t.end, t.status]));
+  const termsDirty = plain(terms) !== plain(sortTerms(data.terms));
+  const bookingCount = (term: string) => data.bookings.filter((b) => b.term === term && !b.deletedAt).length;
 
   async function pickFile(file: File) {
     try {
@@ -128,146 +169,251 @@ export default function SettingsPage(p: Props) {
     } else notify("Couldn't restore: someone changed it. Refresh and try again.", true);
   }
 
+  async function resetDemoData() {
+    const answer = await ask({
+      title: "Reset the demo?",
+      description: "This replaces everything in this browser with fresh sample data.",
+      confirmLabel: "Reset demo data",
+      destructive: true,
+    });
+    if (!answer.ok) return;
+    resetDemo();
+    await p.refresh();
+    location.reload();
+  }
+
+  const sections: { id: string; label: string; count?: number; show: boolean }[] = [
+    { id: "terms", label: "Terms", show: true },
+    { id: "lists", label: "Dropdown choices", show: true },
+    { id: "import", label: "Import spreadsheet", show: true },
+    { id: "deleted", label: "Deleted bookings", count: deleted.length, show: true },
+    { id: "demo", label: "Demo", show: store.mode === "demo" },
+  ];
+
   return (
     <>
-      <h1>Settings</h1>
-      <p className="sub">Terms, dropdown lists, importing the old spreadsheet, and restoring deleted bookings.</p>
-      <div className="stack">
-        <div className="panel">
-          <h2>Terms</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Every term lives in the same database. Add the next term when it's scheduled; close a term when it's finished.
-            Closing saves an archive copy and makes its bookings read-only. Dates here are placeholders until confirmed.
-          </p>
-          <div className="tablewrap">
-            <table className="data">
-              <thead>
-                <tr><th>Term</th><th>Academic year</th><th>Start</th><th>End</th><th>Status</th><th></th></tr>
-              </thead>
-              <tbody>
-                {terms.map((t, i) => (
-                  <tr key={i} style={{ cursor: "default" }}>
-                    <td><input type="text" value={t.name} aria-label="Term name" disabled={t.status === "Closed"} onChange={(e) => editTerm(i, { name: e.target.value })} style={{ width: 120 }} /></td>
-                    <td><input type="text" value={t.academicYear} aria-label="Academic year" placeholder="2026-2027" onChange={(e) => editTerm(i, { academicYear: e.target.value })} style={{ width: 120 }} /></td>
-                    <td><input type="date" value={t.start} aria-label="Start date" onChange={(e) => editTerm(i, { start: e.target.value })} /></td>
-                    <td><input type="date" value={t.end} aria-label="End date" onChange={(e) => editTerm(i, { end: e.target.value })} /></td>
-                    <td>{t.status}</td>
-                    <td>
-                      {t.status === "Open" ? (
-                        <button className="btn small" disabled={busy || !data.terms.some((x) => x.name === t.name)} onClick={() => closeTerm(i)}>Close term</button>
-                      ) : (
-                        <button className="btn small" disabled={busy} onClick={() => reopenTerm(i)}>Reopen</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn" onClick={() => setTerms([...terms, { name: "", academicYear: "", start: "", end: "", status: "Open" }])}>+ Add term</button>
-            <button className="btn primary" disabled={busy} onClick={() => saveTerms()}>Save terms</button>
-          </div>
-        </div>
-
-        <div className="panel">
-          <h2>Dropdown lists</h2>
-          <p className="muted" style={{ marginTop: 0 }}>One value per line. Colleges/schools starts empty until Kathleen supplies the official list.</p>
-          <div className="fields">
-            {(Object.keys(LIST_LABELS) as ListName[]).map((k) => (
-              <label key={k} className="field">
-                {LIST_LABELS[k]}
-                <textarea value={listText[k] ?? ""} rows={6} onChange={(e) => setListText({ ...listText, [k]: e.target.value })} />
-              </label>
+      <PageHeader title="Settings" />
+      <div className="max-w-full overflow-x-auto pb-6">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="h-9">
+            {sections.filter((x) => x.show).map((x) => (
+              <TabsTrigger key={x.id} value={x.id} className="px-3">
+                {x.label}
+                {!!x.count && <span className="text-[13px] font-normal text-muted-foreground tabular-nums">{x.count}</span>}
+              </TabsTrigger>
             ))}
-          </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn primary" disabled={busy} onClick={saveLists}>Save lists</button>
-          </div>
-        </div>
+          </TabsList>
+        </Tabs>
+      </div>
 
-        <div className="panel">
-          <h2>Import the existing spreadsheet</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Pick “2026-2027 Instruction Classes.xlsx”. The FALL/WINTER/SPRING/SUMMER tabs come in; the old LibInsight column is
-            dropped, old “# Students” goes to Actual Student Attendance, and Prep Time is split into minutes and New/Updated.
-            Importing the same file twice skips rows already imported.
-          </p>
-          <input type="file" accept=".xlsx" onChange={(e) => e.target.files?.[0] && pickFile(e.target.files[0])} />
+      {tab === "terms" && (
+        <Card
+          title="Terms"
+          description="A term is a semester, like Fall 26. Its dates decide which term a booking belongs to. When a term is over, close it: the app saves an Excel copy and locks that term's bookings so they can't be changed by accident."
+        >
+          <ul className="flex flex-col gap-3">
+            {terms.map((t, i) => {
+              const saved = data.terms.some((x) => x.name === t.name);
+              const closed = t.status === "Closed";
+              return (
+                <li key={i} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-3">
+                    <span className="text-[16px] font-semibold">{t.name || "New term"}</span>
+                    <span className="text-[13px] text-muted-foreground">
+                      {closed ? "Closed, read-only" : saved ? `Open, ${bookingCount(t.name)} bookings` : "Not saved yet"}
+                    </span>
+                    <span className="ml-auto">
+                      {closed ? (
+                        <Button variant="outline" size="sm" disabled={busy} onClick={() => reopenTerm(i)}>Reopen term</Button>
+                      ) : saved ? (
+                        <Button variant="outline" size="sm" disabled={busy || termsDirty} title={termsDirty ? "Save your changes first" : undefined} onClick={() => closeTerm(i)}>Close term</Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => setTerms(terms.filter((_, j) => j !== i))}>Remove</Button>
+                      )}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <Field label="Name" htmlFor={`term-name-${i}`}>
+                      <Input id={`term-name-${i}`} value={t.name} placeholder="Fall 27" disabled={closed || saved} onChange={(e) => editTerm(i, { name: e.target.value })} />
+                    </Field>
+                    <Field label="Academic year" htmlFor={`term-year-${i}`}>
+                      <Input id={`term-year-${i}`} value={t.academicYear} placeholder="2027-2028" disabled={closed} onChange={(e) => editTerm(i, { academicYear: e.target.value })} />
+                    </Field>
+                    <Field label="First day" htmlFor={`term-start-${i}`}>
+                      <Input id={`term-start-${i}`} type="date" value={t.start} disabled={closed} onChange={(e) => editTerm(i, { start: e.target.value })} />
+                    </Field>
+                    <Field label="Last day" htmlFor={`term-end-${i}`}>
+                      <Input id={`term-end-${i}`} type="date" value={t.end} disabled={closed} onChange={(e) => editTerm(i, { end: e.target.value })} />
+                    </Field>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setTerms([...terms, { name: "", academicYear: "", start: "", end: "", status: "Open" }])}>
+              <Plus /> Add a term
+            </Button>
+            {termsDirty && (
+              <>
+                <Button disabled={busy} onClick={() => saveTerms()}>Save changes</Button>
+                <Button variant="ghost" onClick={() => setTerms(sortTerms(data.terms).map((t) => ({ ...t })))}>Discard</Button>
+                <span className="text-[13px] font-medium">You have unsaved changes.</span>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {tab === "lists" && (
+        <Card
+          title="Dropdown choices"
+          description="These are the options people pick from in the booking form and the faculty form. Changes save right away."
+        >
+          <div className="grid gap-6 md:grid-cols-[14rem_minmax(0,1fr)]">
+            <nav aria-label="Lists" className="flex flex-col gap-0.5">
+              {(Object.keys(LIST_LABELS) as ListName[]).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-current={listName === k}
+                  onClick={() => { setListName(k); setNewValue(""); }}
+                  className={cn(
+                    "flex h-9 items-center justify-between rounded-lg px-2.5 text-left text-[14px] hover:bg-muted",
+                    listName === k && "bg-muted font-semibold",
+                  )}
+                >
+                  {LIST_LABELS[k]}
+                  <span className="text-[13px] font-normal text-muted-foreground tabular-nums">{lists[k].length}</span>
+                </button>
+              ))}
+            </nav>
+            <div>
+              <h3 className="pb-2 text-[15px] font-semibold">{LIST_LABELS[listName]}</h3>
+              {lists[listName].length === 0 ? (
+                <p className="rounded-xl border border-dashed px-4 py-6 text-center text-muted-foreground">
+                  Nothing here yet. Add the first one below.
+                </p>
+              ) : (
+                <ul className="divide-y rounded-xl border">
+                  {lists[listName].map((v) => (
+                    <li key={v} className="flex items-center gap-2 py-1 pr-1 pl-4">
+                      <span className="min-w-0 flex-1 truncate">{v}</span>
+                      <Button variant="ghost" size="sm" disabled={busy} aria-label={`Remove ${v}`} onClick={() => removeValue(v)}>
+                        Remove
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); addValue(); }}>
+                <Input aria-label={`Add to ${LIST_LABELS[listName]}`} placeholder="Add another" value={newValue} onChange={(e) => setNewValue(e.target.value)} className="max-w-sm" />
+                <Button type="submit" variant="outline" disabled={busy || !newValue.trim()}>Add</Button>
+              </form>
+              <p className="mt-3 text-[13px] text-muted-foreground">
+                Removing a choice doesn't change bookings that already use it.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {tab === "import" && (
+        <Card
+          title="Import the existing spreadsheet"
+          description="Bring in the bookings from 2026-2027 Instruction Classes.xlsx. You'll see a summary before anything is added, and importing the same file twice won't create duplicates."
+        >
+          <ol className="mb-5 list-decimal space-y-1 pl-5 text-[14px]">
+            <li>Choose the spreadsheet file.</li>
+            <li>Check the summary of what will come in.</li>
+            <li>Select Import bookings.</li>
+          </ol>
+          <label htmlFor={fileId} className="text-[13px] font-medium text-muted-foreground">Spreadsheet file</label>
+          <Input id={fileId} type="file" accept=".xlsx" className="mt-1.5 max-w-md" onChange={(e) => e.target.files?.[0] && pickFile(e.target.files[0])} />
           {pending && (
-            <div className="banner info" style={{ marginTop: 12 }}>
-              <b>Ready to import {pending.bookings.length} bookings.</b>
-              <ul style={{ margin: "6px 0" }}>
+            <div className="mt-4 rounded-xl border bg-muted/60 p-4">
+              <p className="font-semibold">Ready to import {pending.bookings.length} bookings</p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[14px]">
                 {pending.report.perTab.map((t) => <li key={t.tab}>{t.tab}: {t.rows} rows</li>)}
                 {pending.report.skippedTabs.length > 0 && <li>Skipped tabs: {pending.report.skippedTabs.join(", ")}</li>}
-                {pending.report.alreadyImported > 0 && <li>{pending.report.alreadyImported} already imported (skipped)</li>}
+                {pending.report.alreadyImported > 0 && <li>{pending.report.alreadyImported} already imported, skipped</li>}
                 <li>{pending.report.libinsightDropped} LibInsight values dropped</li>
-                <li>{pending.report.missingDetails} bookings need a college/school and student type (see Missing details)</li>
+                <li>{pending.report.missingDetails} bookings will need a college/school and student type</li>
               </ul>
               {pending.report.flags.length > 0 && (
-                <details>
-                  <summary>{pending.report.flags.length} cells to check</summary>
-                  <ul>
+                <details className="mt-2 text-[14px]">
+                  <summary className="cursor-pointer font-medium">{pending.report.flags.length} cells to check</summary>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
                     {pending.report.flags.map((f, i) => (
-                      <li key={i}>{f.tab} row {f.row}, {f.column}: “{f.value}” ({f.reason})</li>
+                      <li key={i}>{f.tab} row {f.row}, {f.column}: "{f.value}" ({f.reason})</li>
                     ))}
                   </ul>
                 </details>
               )}
-              <div className="row" style={{ marginTop: 8 }}>
-                <button className="btn primary" disabled={busy || pending.bookings.length === 0} onClick={doImport}>Import</button>
-                <button className="btn" onClick={() => setPending(null)}>Cancel</button>
+              <div className="mt-4 flex gap-2">
+                <Button disabled={busy || pending.bookings.length === 0} onClick={doImport}>Import bookings</Button>
+                <Button variant="ghost" onClick={() => setPending(null)}>Cancel</Button>
               </div>
             </div>
           )}
-        </div>
+          <p className="mt-5 text-[13px] text-muted-foreground">
+            What changes on the way in: the old LibInsight column is left out, the old student count becomes actual
+            attendance, and prep time is split into minutes and New or Updated.
+          </p>
+        </Card>
+      )}
 
-        <div className="panel">
-          <h2>Deleted bookings</h2>
+      {tab === "deleted" && (
+        <Card title="Deleted bookings" description="Deleting a booking only hides it. Restore one to bring it back to every list.">
           {deleted.length === 0 ? (
-            <div className="muted">Nothing deleted.</div>
+            <p className="text-muted-foreground">Nothing has been deleted.</p>
           ) : (
-            deleted.map((b) => (
-              <div key={b.id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--soft)" }}>
-                <b>{b.course}</b> <span>{fmtDate(b.date)}</span> <span className="muted">{b.faculty} · deleted by {b.updatedBy}</span>
-                <span className="spacer" />
-                <button className="btn small" onClick={() => restore(b)}>Restore</button>
-              </div>
-            ))
+            <ul className="divide-y">
+              {deleted.map((b) => (
+                <li key={b.id} className="flex items-center gap-3 py-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-semibold">{b.course}</span>{" "}
+                    <span className="text-muted-foreground">{[fmtDate(b.date), b.faculty && `with ${b.faculty}`, `deleted by ${b.updatedBy}`].filter(Boolean).join(", ")}</span>
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => restore(b)}>Restore</Button>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
+        </Card>
+      )}
 
-        {store.mode === "demo" && (
-          <div className="panel">
-            <h2>Demo mode</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Data is kept in this browser only. Open the app in a second tab to see two people editing at once.
-              Once IT connects SharePoint and sign-in, everyone shares one database.
-            </p>
+      {tab === "demo" && store.mode === "demo" && (
+        <Card
+          title="Demo"
+          description="You're trying the app with sample data that stays in this browser. Open the app in a second tab to see two people editing at once. Once SharePoint and sign-in are connected, everyone shares one database."
+        >
+          <div className="flex flex-wrap items-end gap-3">
             {p.demoUser && (
-              <label className="field" style={{ maxWidth: 240 }}>
-                I am
-                <select value={p.demoUser.value} onChange={(e) => p.demoUser!.set(e.target.value)}>
-                  {data.lists.librarian.map((l) => <option key={l}>{l}</option>)}
-                </select>
-              </label>
+              <Field label="Use the demo as" htmlFor="demo-user" className="w-48">
+                <Select value={p.demoUser.value} onValueChange={(v) => p.demoUser!.set(v)}>
+                  <SelectTrigger id="demo-user" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {data.lists.librarian.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
             )}
-            <div className="row" style={{ marginTop: 12 }}>
-              <button
-                className="btn danger"
-                onClick={async () => {
-                  if (!confirm("Reset the demo? This replaces everything in this browser with fresh sample data.")) return;
-                  resetDemo();
-                  await p.refresh();
-                  location.reload();
-                }}
-              >
-                Reset demo data
-              </button>
-            </div>
+            <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={resetDemoData}>Start over with fresh sample data</Button>
           </div>
-        )}
-      </div>
+        </Card>
+      )}
+      {confirmDialog}
     </>
+  );
+}
+
+function Card(props: { title: string; description: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border bg-card p-6">
+      <h2 className="text-[17px] font-semibold">{props.title}</h2>
+      <p className="mt-1 mb-5 max-w-[75ch] text-[14px] text-muted-foreground">{props.description}</p>
+      {props.children}
+    </section>
   );
 }

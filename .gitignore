@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+# Never commit real library data. The blank template is the one exception.
+*.xlsx
+!template/InstructionTracker-DB.xlsx

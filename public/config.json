@@ -1,0 +1,16 @@
+{
+  "mode": "demo",
+  "appTitle": "Instruction Tracker",
+  "auth": {
+    "tenantId": "",
+    "clientId": "",
+    "redirectUri": ""
+  },
+  "sharepoint": {
+    "siteUrl": "",
+    "filePath": "InstructionTracker/InstructionTracker-DB.xlsx"
+  },
+  "allowedUsers": [],
+  "refreshSeconds": 20,
+  "showFormPreview": true
+}

@@ -2,7 +2,6 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Download, Plus, Search } from "lucide-react";
 import { blankBooking, isMissingDetails, statusOf, todayIso, type Booking, type Status } from "../model";
 import { academicYears, isClosed, sortTerms, termFor } from "../logic/terms";
-import { buildExport } from "../io/exportWorkbook";
 import { downloadBlob } from "../io/download";
 import BookingDialog from "./BookingDialog";
 import { PageHeader, dateParts, type PageProps } from "./common";
@@ -123,6 +122,7 @@ export default function BookingsPage(p: PageProps) {
 
   async function exportAll() {
     try {
+      const { buildExport } = await import("../io/exportWorkbook");
       const buf = await buildExport(data.bookings, data.terms, data.lists);
       downloadBlob(new Blob([buf]), `Instruction Classes ${today}.xlsx`);
       notify("Excel export downloaded.");

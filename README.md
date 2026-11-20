@@ -31,7 +31,7 @@ Open http://localhost:5173.
 | Booking sheet | Opens from the side. The header names the stage and the next step. Four sections (Faculty request, Librarian, Planning, After the session) collapse to a one-line summary, and the one for the current stage starts open. Term and year come first. Notes stay visible and editable throughout. The More menu has Add to my calendar (.ics), Duplicate and Delete (restorable) |
 | Requests | Faculty requests from the form, one card each. Accept the first or second choice of date to make a booking, or reject with a reason |
 | Dashboard | A compact filter bar (period, student type, librarian, college/school, format, session type, Reset), then a month calendar with each booking in its librarian's color, and sessions by librarian, college/school and student type. Click a bar to filter. Totals for the period sit at the bottom. Export to Excel |
-| Settings | One tab per job: **Terms** (add, edit dates, close with an archive copy, reopen), **Dropdown choices** (add or remove options; saves right away), **Import spreadsheet**, **Deleted bookings** (restore) and **Demo** |
+| Settings | One tab per job: **Terms** (add, edit dates, close with an archive copy, reopen), **Dropdown choices** (add, remove or reorder options; saves right away), **Import spreadsheet**, **Deleted bookings** (restore) and **Demo** |
 | Faculty form preview | What faculty fill in (the real one is a Microsoft Form) |
 
 The interface uses [shadcn/ui](https://ui.shadcn.com) components on Tailwind CSS v4, with the system font and a neutral palette: one blue accent marks the main action on each screen. The dashboard is the one exception: each librarian has their own color in the calendar and the librarian chart.

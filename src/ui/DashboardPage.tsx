@@ -14,7 +14,6 @@ import {
   type DashFilters,
   type Period,
 } from "../logic/metrics";
-import { buildDashboardExport } from "../io/exportWorkbook";
 import { downloadBlob } from "../io/download";
 import BookingDialog from "./BookingDialog";
 import { PageHeader, fmtDate, type PageProps } from "./common";
@@ -215,6 +214,7 @@ export default function DashboardPage(p: PageProps) {
       ["Attendance vs class size (%)", k.attendanceVsClassSize ?? "—"],
     ];
     try {
+      const { buildDashboardExport } = await import("../io/exportWorkbook");
       const buf = await buildDashboardExport(
         filtersText,
         kpiRows,

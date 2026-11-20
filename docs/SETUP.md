@@ -115,11 +115,11 @@ Faculty never open the app. They fill in a form, and each response becomes a row
      - Map the columns: `Request ID` = Response Id, `Submitted At` = Submission time, `Status` = `New`. Map each question to the column with the same name (`Term`, `Preferred Date 1`, `Preferred Time 1`, `Course #`, `Faculty Name`, `Faculty Email`, …).
 3. **Embed the form** on the Library Instruction LibGuide: in Forms, choose **Collect responses → Embed** and paste the code into a LibGuides media/widget box.
 
-New requests show up on each librarian's **Requests** tab within about 20 seconds. Accepting one turns it into a booking, pre-filled from the form.
+New requests show up on each librarian's **Requests** page within about 20 seconds, with a count beside Requests in the sidebar. Accepting one turns it into a booking, pre-filled from the form.
 
 ## 6. Bring in this year's spreadsheet
 
-Sign in, go to **Settings → Import the existing spreadsheet**, and pick `2026-2027 Instruction Classes.xlsx`. The app shows what it will import, and you confirm. Running it a second time skips rows that are already in.
+Sign in, go to **Settings → Import spreadsheet**, and pick `2026-2027 Instruction Classes.xlsx`. The app shows what it will import, and you confirm. Running it a second time skips rows that are already in.
 
 ## 7. Check it works
 
@@ -129,7 +129,7 @@ Sign in, go to **Settings → Import the existing spreadsheet**, and pick `2026-
 - [ ] Two people editing the same field: the second one gets the "pick which value to keep" box.
 - [ ] A test form submission appears under Requests, and accepting it creates a booking.
 - [ ] Export to Excel downloads a file with Term Field in column A.
-- [ ] Settings → Close term saves `archive/<TERM>.xlsx` next to the workbook.
+- [ ] Settings → Terms → Close term saves `archive/<TERM>.xlsx` next to the workbook.
 
 ## Troubleshooting
 

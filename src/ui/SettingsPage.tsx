@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { LIST_LABELS, type Booking, type ListName, type Lists, type Term } from "../model";
 import { overlappingTerm, sortTerms } from "../logic/terms";
-import { readLegacyWorkbook, type ImportReport } from "../io/importWorkbook";
-import { buildExport } from "../io/exportWorkbook";
+import type { ImportReport } from "../io/importWorkbook";
 import { resetDemo } from "../data/demoStore";
 import { Field, PageHeader, fmtDate, type PageProps } from "./common";
 import { useConfirm } from "./confirm";
@@ -11,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props extends PageProps {
@@ -67,6 +66,7 @@ export default function SettingsPage(p: Props) {
     setBusy(true);
     try {
       const rows = data.bookings.filter((b) => b.term === t.name);
+      const { buildExport } = await import("../io/exportWorkbook");
       const buf = await buildExport(rows, [t], data.lists);
       const where = await store.saveArchive(`${t.name.toUpperCase()}.xlsx`, buf);
       const next = terms.map((x, j) => (j === i ? { ...x, status: "Closed" as const } : x));
@@ -121,6 +121,16 @@ export default function SettingsPage(p: Props) {
     void saveLists({ ...lists, [listName]: [...lists[listName], v] }, `Added "${v}".`);
   }
 
+  function moveValue(v: string, by: -1 | 1) {
+    const cur = lists[listName];
+    const i = cur.indexOf(v);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= cur.length) return;
+    const next = [...cur];
+    [next[i], next[j]] = [next[j], next[i]];
+    void saveLists({ ...lists, [listName]: next }, `Moved "${v}" ${by < 0 ? "up" : "down"}.`);
+  }
+
   function removeValue(v: string) {
     void saveLists({ ...lists, [listName]: lists[listName].filter((x) => x !== v) }, `Removed "${v}".`);
   }
@@ -132,6 +142,7 @@ export default function SettingsPage(p: Props) {
   async function pickFile(file: File) {
     try {
       const keys = new Set(data.bookings.map((b) => b.importKey).filter(Boolean));
+      const { readLegacyWorkbook } = await import("../io/importWorkbook");
       const result = await readLegacyWorkbook(await file.arrayBuffer(), data.lists, keys, store.user);
       setPending(result);
     } catch (e) {
@@ -297,9 +308,15 @@ export default function SettingsPage(p: Props) {
                 </p>
               ) : (
                 <ul className="divide-y rounded-xl border">
-                  {lists[listName].map((v) => (
-                    <li key={v} className="flex items-center gap-2 py-1 pr-1 pl-4">
+                  {lists[listName].map((v, i) => (
+                    <li key={v} className="flex items-center gap-1 py-1 pr-1 pl-4">
                       <span className="min-w-0 flex-1 truncate">{v}</span>
+                      <Button variant="ghost" size="icon-sm" disabled={busy || i === 0} aria-label={`Move ${v} up`} onClick={() => moveValue(v, -1)}>
+                        <ArrowUp />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" disabled={busy || i === lists[listName].length - 1} aria-label={`Move ${v} down`} onClick={() => moveValue(v, 1)}>
+                        <ArrowDown />
+                      </Button>
                       <Button variant="ghost" size="sm" disabled={busy} aria-label={`Remove ${v}`} onClick={() => removeValue(v)}>
                         Remove
                       </Button>
@@ -312,7 +329,8 @@ export default function SettingsPage(p: Props) {
                 <Button type="submit" variant="outline" disabled={busy || !newValue.trim()}>Add</Button>
               </form>
               <p className="mt-3 text-[13px] text-muted-foreground">
-                Removing a choice doesn't change bookings that already use it.
+The order here is the order people see in the dropdowns. Removing a choice doesn't change bookings that already
+                use it.{listName === "librarian" && " Dashboard colors follow the librarian order: first is blue, second orange, third green."}
               </p>
             </div>
           </div>

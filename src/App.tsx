@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { loadConfig, sharepointProblems, type AppConfig } from "./config";
-import { Auth } from "./auth";
+import type { Auth } from "./auth";
 import type { AppData } from "./model";
 import type { DataStore } from "./data/store";
 import { DEMO_STORAGE_KEY, DemoStore } from "./data/demoStore";
-import { GraphStore } from "./data/graphStore";
 import BookingsPage from "./ui/BookingsPage";
 import RequestsPage from "./ui/RequestsPage";
 import DashboardPage from "./ui/DashboardPage";
@@ -78,6 +77,7 @@ export default function App() {
         return;
       }
       try {
+        const [{ Auth }, { GraphStore }] = await Promise.all([import("./auth"), import("./data/graphStore")]);
         const auth = await Auth.create(cfg);
         if (!auth.account) {
           setBoot({ state: "signin", auth, cfg });

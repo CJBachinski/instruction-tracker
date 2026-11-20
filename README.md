@@ -11,6 +11,10 @@ Until IT connects SharePoint and sign-in, the app runs in **demo mode**: sample 
 
 ## Try it (demo mode)
 
+**Live demo:** https://cjbachinski.github.io/instruction-tracker/ (sample data only, kept in your own browser). It is rebuilt from `main` on every push.
+
+To run it on your own computer:
+
 ```bash
 npm install
 npm run dev

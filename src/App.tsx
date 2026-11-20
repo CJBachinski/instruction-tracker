@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { loadConfig, sharepointProblems, type AppConfig } from "./config";
 import { Auth } from "./auth";
 import type { AppData } from "./model";
@@ -136,6 +136,14 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  // The sidebar highlight slides to the current page instead of jumping.
+  const navRef = useRef<HTMLElement>(null);
+  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    setPill(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+  }, [page, boot.state, data === null]);
+
   if (boot.state === "loading") return <Splash title="Loading" />;
   if (boot.state === "setup")
     return (
@@ -209,7 +217,14 @@ export default function App() {
             <div className="text-[15px] leading-tight font-semibold">{cfg.appTitle}</div>
             <div className="hidden text-[13px] text-muted-foreground md:block">Trexler Library</div>
           </div>
-          <nav aria-label="Main" className="flex flex-1 flex-row flex-wrap gap-0.5 md:flex-none md:flex-col">
+          <nav ref={navRef} aria-label="Main" className="relative flex flex-1 flex-row flex-wrap gap-0.5 md:flex-none md:flex-col">
+            {pill && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 hidden rounded-lg bg-sidebar-accent transition-[transform,height] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] md:block"
+                style={{ height: pill.height, transform: `translateY(${pill.top}px)` }}
+              />
+            )}
             {nav
               .filter((n) => n.show)
               .map((n) => {
@@ -220,9 +235,9 @@ export default function App() {
                     href={`#/${n.id}`}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[14px] text-foreground/80 transition-colors [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+                      "relative flex h-9 items-center gap-2.5 rounded-lg px-2 text-[14px] text-foreground/80 transition-colors [&_svg]:size-[18px] [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
                       "hover:bg-sidebar-accent/70",
-                      active && "bg-sidebar-accent font-semibold text-foreground [&_svg]:text-foreground",
+                      active && "bg-sidebar-accent font-semibold text-foreground md:bg-transparent md:hover:bg-transparent [&_svg]:text-foreground",
                       n.id === "form" && "md:mt-4",
                     )}
                   >
@@ -293,7 +308,7 @@ export default function App() {
           </div>
         </aside>
         <main className="min-w-0 flex-1">
-          <div className="mx-auto w-full max-w-[1180px] px-6 py-8 lg:px-10">
+          <div key={page} className="view-in mx-auto w-full max-w-[1180px] px-6 py-8 lg:px-10">
             {!data || !store ? (
               <p className="py-24 text-center text-muted-foreground">Loading bookings</p>
             ) : (

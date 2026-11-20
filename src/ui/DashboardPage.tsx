@@ -171,7 +171,7 @@ export default function DashboardPage(p: PageProps) {
                 </span>
                 <span className="h-3 overflow-hidden rounded-full bg-muted">
                   <span
-                    className="block h-full rounded-full"
+                    className="block h-full rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
                     style={{ width: `${(b.count / max) * 100}%`, background: b.label === NOT_SET ? UNASSIGNED_COLOR : colorOf(b.label) }}
                   />
                 </span>
@@ -312,7 +312,7 @@ export default function DashboardPage(p: PageProps) {
               </Button>
             </div>
           </div>
-          <div className="grid grid-cols-7 border-t border-l">
+          <div key={shownMonth} className="view-in grid grid-cols-7 border-t border-l">
             {DOW.map((d) => (
               <div key={d} className="border-r border-b px-2 py-1.5 text-[12px] text-muted-foreground">{d}</div>
             ))}
@@ -368,7 +368,7 @@ export default function DashboardPage(p: PageProps) {
             ))}
           </ul>
           {day && (
-            <div className="pt-4">
+            <div key={day} className="view-in pt-4">
               <h3 className="pb-1 text-[14px] font-semibold">{fmtDate(day)}</h3>
               {(dates.get(day) ?? []).length === 0 && <p className="text-muted-foreground">No bookings that day.</p>}
               <ul className="divide-y">

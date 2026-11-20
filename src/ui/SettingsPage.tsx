@@ -206,6 +206,7 @@ export default function SettingsPage(p: Props) {
         </Tabs>
       </div>
 
+      <div key={tab} className="view-in">
       {tab === "terms" && (
         <Card
           title="Terms"
@@ -403,6 +404,7 @@ export default function SettingsPage(p: Props) {
           </div>
         </Card>
       )}
+      </div>
       {confirmDialog}
     </>
   );

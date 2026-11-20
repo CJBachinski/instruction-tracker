@@ -242,6 +242,7 @@ export default function BookingsPage(p: PageProps) {
         </div>
       </div>
 
+      <div key={tab} className="view-in">
       {tab === "To do" ? (
         <div className="flex flex-col gap-8">
           {todoEmpty && (
@@ -297,6 +298,7 @@ export default function BookingsPage(p: PageProps) {
           ))}
         </List>
       )}
+      </div>
 
       {open && (
         <BookingDialog
@@ -339,7 +341,7 @@ function Section(props: { title: string; count: number; hint?: string; children:
 }
 
 function List(props: { children: ReactNode }) {
-  return <ul className="divide-y overflow-hidden rounded-2xl border bg-card">{props.children}</ul>;
+  return <ul className="stagger divide-y overflow-hidden rounded-2xl border bg-card">{props.children}</ul>;
 }
 
 function Empty(props: { title: string; children: ReactNode }) {
@@ -361,7 +363,7 @@ function Row(props: {
   const { b } = props;
   const d = dateParts(b.date);
   return (
-    <li className="flex items-center gap-2 pr-4 hover:bg-muted/60 focus-within:bg-muted/60">
+    <li className="flex items-center gap-2 pr-4 transition-colors duration-150 hover:bg-muted/60 focus-within:bg-muted/60 active:bg-muted">
       <button
         type="button"
         onClick={() => props.onOpen(b)}

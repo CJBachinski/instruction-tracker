@@ -110,6 +110,26 @@
   }
 }
 
+/* Motion: a view settles into place when you change page, tab or month. */
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.view-in {
+  animation: view-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+/* Rows arrive one after another, capped so long lists don't keep you waiting. */
+.stagger > * {
+  animation: view-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.stagger > :nth-child(2) { animation-delay: 30ms; }
+.stagger > :nth-child(3) { animation-delay: 60ms; }
+.stagger > :nth-child(4) { animation-delay: 90ms; }
+.stagger > :nth-child(5) { animation-delay: 120ms; }
+.stagger > :nth-child(n + 6) { animation-delay: 150ms; }
+
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.01ms !important;
